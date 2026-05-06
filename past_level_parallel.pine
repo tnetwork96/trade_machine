@@ -58,53 +58,77 @@ var line midLine = na
 var float lastZoneTop = na
 var float lastZoneBottom = na
 var float lastZoneMid = na
-if touchCount >= minTouches and not na(lockedZoneTop)
-    lastZoneTop := lockedZoneTop
-    lastZoneBottom := lockedZoneBottom
-    lastZoneMid := lockedZoneMid
 
-    if na(currentZone)
-        currentZone := box.new(left=nz(lockedStartBar, bar_index), right=bar_index + extendBars, top=lockedZoneTop, bottom=lockedZoneBottom, bgcolor=zoneFill, border_color=zoneColor)
-    else
-        box.set_right(currentZone, bar_index + extendBars)
-        box.set_top(currentZone, lockedZoneTop)
-        box.set_bottom(currentZone, lockedZoneBottom)
-        box.set_bgcolor(currentZone, zoneFill)
-        box.set_border_color(currentZone, zoneColor)
+pivotHigh = ta.pivothigh(high, 1, 1)
+pivotLow = ta.pivotlow(low, 1, 1)
+zoneCheckTop = na(lockedZoneTop) ? lastZoneTop : lockedZoneTop
+zoneCheckBottom = na(lockedZoneBottom) ? lastZoneBottom : lockedZoneBottom
+hasPivotInZone = not na(zoneCheckTop) and ((not na(pivotHigh) and pivotHigh >= zoneCheckBottom and pivotHigh <= zoneCheckTop) or (not na(pivotLow) and pivotLow >= zoneCheckBottom and pivotLow <= zoneCheckTop))
 
-    if showMidLine
-        if na(midLine)
-            midLine := line.new(x1=nz(lockedStartBar, bar_index), y1=lockedZoneMid, x2=bar_index + extendBars, y2=lockedZoneMid, color=midLineColor, style=line.style_dashed, width=1)
-        else
-            line.set_x1(midLine, nz(lockedStartBar, bar_index))
-            line.set_x2(midLine, bar_index + extendBars)
-            line.set_y1(midLine, lockedZoneMid)
-            line.set_y2(midLine, lockedZoneMid)
-            line.set_color(midLine, midLineColor)
-            line.set_style(midLine, line.style_dashed)
-    else
-        if not na(midLine)
-            line.delete(midLine)
-            midLine := na
+if hasPivotInZone
+    touchCount := 0
+    lastTouchBar := na
+    lockedZoneTop := na
+    lockedZoneBottom := na
+    lockedZoneMid := na
+    lockedStartBar := na
+    lastZoneTop := na
+    lastZoneBottom := na
+    lastZoneMid := na
+    if not na(currentZone)
+        box.delete(currentZone)
+        currentZone := na
+    if not na(midLine)
+        line.delete(midLine)
+        midLine := na
 else
-    if not na(currentZone) and not na(lastZoneTop)
-        box.set_right(currentZone, bar_index + extendBars)
-        box.set_top(currentZone, lastZoneTop)
-        box.set_bottom(currentZone, lastZoneBottom)
-        box.set_bgcolor(currentZone, zoneFill)
-        box.set_border_color(currentZone, zoneColor)
+    if touchCount >= minTouches and not na(lockedZoneTop)
+        lastZoneTop := lockedZoneTop
+        lastZoneBottom := lockedZoneBottom
+        lastZoneMid := lockedZoneMid
 
-    if showMidLine and not na(lastZoneMid)
-        if na(midLine)
-            midLine := line.new(x1=bar_index, y1=lastZoneMid, x2=bar_index + extendBars, y2=lastZoneMid, color=midLineColor, style=line.style_dashed, width=1)
+        if na(currentZone)
+            currentZone := box.new(left=nz(lockedStartBar, bar_index), right=bar_index + extendBars, top=lockedZoneTop, bottom=lockedZoneBottom, bgcolor=zoneFill, border_color=zoneColor)
         else
-            line.set_x1(midLine, bar_index)
-            line.set_x2(midLine, bar_index + extendBars)
-            line.set_y1(midLine, lastZoneMid)
-            line.set_y2(midLine, lastZoneMid)
-            line.set_color(midLine, midLineColor)
-            line.set_style(midLine, line.style_dashed)
+            box.set_right(currentZone, bar_index + extendBars)
+            box.set_top(currentZone, lockedZoneTop)
+            box.set_bottom(currentZone, lockedZoneBottom)
+            box.set_bgcolor(currentZone, zoneFill)
+            box.set_border_color(currentZone, zoneColor)
+
+        if showMidLine
+            if na(midLine)
+                midLine := line.new(x1=nz(lockedStartBar, bar_index), y1=lockedZoneMid, x2=bar_index + extendBars, y2=lockedZoneMid, color=midLineColor, style=line.style_dashed, width=1)
+            else
+                line.set_x1(midLine, nz(lockedStartBar, bar_index))
+                line.set_x2(midLine, bar_index + extendBars)
+                line.set_y1(midLine, lockedZoneMid)
+                line.set_y2(midLine, lockedZoneMid)
+                line.set_color(midLine, midLineColor)
+                line.set_style(midLine, line.style_dashed)
+        else
+            if not na(midLine)
+                line.delete(midLine)
+                midLine := na
     else
-        if not na(midLine)
-            line.delete(midLine)
-            midLine := na
+        if not na(currentZone) and not na(lastZoneTop)
+            box.set_right(currentZone, bar_index + extendBars)
+            box.set_top(currentZone, lastZoneTop)
+            box.set_bottom(currentZone, lastZoneBottom)
+            box.set_bgcolor(currentZone, zoneFill)
+            box.set_border_color(currentZone, zoneColor)
+
+        if showMidLine and not na(lastZoneMid)
+            if na(midLine)
+                midLine := line.new(x1=bar_index, y1=lastZoneMid, x2=bar_index + extendBars, y2=lastZoneMid, color=midLineColor, style=line.style_dashed, width=1)
+            else
+                line.set_x1(midLine, bar_index)
+                line.set_x2(midLine, bar_index + extendBars)
+                line.set_y1(midLine, lastZoneMid)
+                line.set_y2(midLine, lastZoneMid)
+                line.set_color(midLine, midLineColor)
+                line.set_style(midLine, line.style_dashed)
+        else
+            if not na(midLine)
+                line.delete(midLine)
+                midLine := na

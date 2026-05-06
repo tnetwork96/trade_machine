@@ -1,0 +1,38 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © caksig
+
+//@version=6
+indicator("Past Level Parallel", overlay=true)
+
+useAtr = input.bool(true, "Zone height by ATR")
+atrLen = input.int(14, "ATR length", minval=1)
+atrMult = input.float(0.2, "ATR multiplier", minval=0.0, step=0.05)
+tickHeight = input.int(20, "Zone height (ticks)", minval=1)
+zoneColor = input.color(color.rgb(60, 200, 90), "Zone color")
+zoneFill = input.color(color.new(color.rgb(60, 200, 90), 85), "Zone fill")
+minTouches = input.int(3, "Min consecutive touches", minval=1)
+extendBars = input.int(100, "Extend right (bars)", minval=1)
+
+m5Close = request.security(syminfo.tickerid, "5", close)
+zoneHeight = useAtr ? ta.atr(atrLen) * atrMult : tickHeight * syminfo.mintick
+zoneTop = m5Close + zoneHeight
+zoneBottom = m5Close - zoneHeight
+
+touch = high >= zoneTop or low <= zoneBottom
+var int consecutiveTouches = 0
+consecutiveTouches := touch ? nz(consecutiveTouches[1]) + 1 : 0
+
+var box currentZone = na
+if consecutiveTouches >= minTouches
+    if na(currentZone)
+        currentZone := box.new(left=bar_index, right=bar_index + extendBars, top=zoneTop, bottom=zoneBottom, bgcolor=zoneFill, border_color=zoneColor)
+    else
+        box.set_right(currentZone, bar_index + extendBars)
+        box.set_top(currentZone, zoneTop)
+        box.set_bottom(currentZone, zoneBottom)
+        box.set_bgcolor(currentZone, zoneFill)
+        box.set_border_color(currentZone, zoneColor)
+else
+    if not na(currentZone)
+        box.delete(currentZone)
+        currentZone := na

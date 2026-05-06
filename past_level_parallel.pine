@@ -10,7 +10,9 @@ atrMult = input.float(0.2, "ATR multiplier", minval=0.0, step=0.05)
 tickHeight = input.int(20, "Zone height (ticks)", minval=1)
 zoneColor = input.color(color.rgb(60, 200, 90), "Zone color")
 zoneFill = input.color(color.new(color.rgb(60, 200, 90), 85), "Zone fill")
-minTouches = input.int(3, "Min consecutive touches", minval=1)
+minTouches = input.int(4, "Min consecutive touches", minval=1)
+maxTouchesInput = input.int(5, "Max consecutive touches", minval=1)
+maxTouches = math.max(maxTouchesInput, minTouches)
 extendBars = input.int(100, "Extend right (bars)", minval=1)
 
 m5Close = request.security(syminfo.tickerid, "5", close)
@@ -18,12 +20,23 @@ zoneHeight = useAtr ? ta.atr(atrLen) * atrMult : tickHeight * syminfo.mintick
 zoneTop = m5Close + zoneHeight
 zoneBottom = m5Close - zoneHeight
 
-touch = high >= zoneTop or low <= zoneBottom
+touch = high >= zoneBottom and low <= zoneTop
 var int consecutiveTouches = 0
-consecutiveTouches := touch ? nz(consecutiveTouches[1]) + 1 : 0
+var int lastTouchBar = na
+var bool zoneConfirmed = false
+if touch
+    consecutiveTouches := lastTouchBar == bar_index - 1 ? nz(consecutiveTouches[1]) + 1 : 1
+    lastTouchBar := bar_index
+else
+    consecutiveTouches := 0
+    lastTouchBar := na
+    zoneConfirmed := false
+
+if consecutiveTouches >= minTouches and consecutiveTouches <= maxTouches
+    zoneConfirmed := true
 
 var box currentZone = na
-if consecutiveTouches >= minTouches
+if zoneConfirmed
     if na(currentZone)
         currentZone := box.new(left=bar_index, right=bar_index + extendBars, top=zoneTop, bottom=zoneBottom, bgcolor=zoneFill, border_color=zoneColor)
     else

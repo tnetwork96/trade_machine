@@ -13,11 +13,27 @@
 // Số nến trước đó cần kiểm tra (không tính nến hiện tại)
 input int  InpLookbackBars  = 50;    
 // Sai số chạm vùng giá (points) để xác định có chạm
-input int  InpZonePoints    = 30;    
+input int  InpZonePoints    = 3;    
 // Độ rộng vùng vẽ (points) cho 2 đường song song
-input int  InpDrawPoints    = 6;     
+input int  InpDrawPoints    = 5;     
 // Số nến LIỀN KỀ phải chạm vùng giá mới đủ điều kiện
-input int  InpConsecutiveBars = 20;  
+input int  InpConsecutiveBars = 7;  
+// Khoảng cách vượt xa vùng để kích hoạt lệnh (points)
+input int  InpBreakoutDistancePoints = 0;
+// Khối lượng vào lệnh
+input double InpLotSize = 0.01;
+// Stop Loss (points), 0 = không đặt
+input int  InpStopLossPoints = 0;
+// Take Profit (points), 0 = không đặt
+input int  InpTakeProfitPoints = 0;
+
+// Lưu giá vùng gần nhất khi đủ điều kiện
+bool g_zone_active = false;
+double g_zone_price = 0.0;
+double g_zone_low = 0.0;
+double g_zone_high = 0.0;
+// Đối tượng trade để đặt lệnh
+CTrade g_trade;
 
 // Kiểm tra chuỗi nến liền kề ngay trước nến anchor.
 // - Anchor = nến ngay trước tick hiện tại (shift = 1) -> rates[0].
@@ -29,6 +45,7 @@ bool PreviousBarsTouchedZone(const int lookback_bars,
                               const int consecutive_bars,
                               double &zone_low,
                               double &zone_high,
+                              double &zone_price,
                               datetime &left_time,
                               datetime &right_time)
 {
@@ -76,6 +93,7 @@ bool PreviousBarsTouchedZone(const int lookback_bars,
       // Vẽ đoạn song song
       zone_low = anchor_high - draw_tolerance;
       zone_high = anchor_high + draw_tolerance;
+      zone_price = anchor_high;
       // Đoạn vẽ chỉ trong khoảng nến liền kề -> từ nến cũ nhất đến anchor
       left_time = rates[required].time;
       right_time = rates[0].time;
@@ -104,9 +122,110 @@ bool PreviousBarsTouchedZone(const int lookback_bars,
       // Vẽ đoạn song song
       zone_low = anchor_low - draw_tolerance;
       zone_high = anchor_low + draw_tolerance;
+      zone_price = anchor_low;
       left_time = rates[required].time;
       right_time = rates[0].time;
       return true;
+   }
+
+   return false;
+}
+
+// Đặt lệnh khi nến đóng cửa vượt xa vùng giá.
+// - Đóng trên vùng + khoảng cách: SELL thị trường.
+// - Đóng dưới vùng - khoảng cách: BUY thị trường.
+bool CheckBreakoutTrade(const bool zone_active,
+                        const double zone_low,
+                        const double zone_high)
+{
+   static datetime last_signal_time = 0;
+   static int last_signal_side = 0; // 1 = trên vùng, -1 = dưới vùng
+
+   if(!zone_active)
+   {
+      last_signal_time = 0;
+      last_signal_side = 0;
+      return false;
+   }
+
+   MqlRates last_bar[];
+   if(CopyRates(_Symbol, _Period, 1, 1, last_bar) < 1)
+      return false;
+   ArraySetAsSeries(last_bar, true);
+
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick))
+      return false;
+
+   const datetime bar_time = last_bar[0].time;
+   const double bar_high = last_bar[0].high;
+   const double bar_low = last_bar[0].low;
+   const double bar_close = last_bar[0].close;
+   const double breakout_distance = InpBreakoutDistancePoints * _Point;
+
+   // Nếu đã xử lý nến này rồi thì không lặp lại
+   if(bar_time == last_signal_time)
+      return false;
+
+   // Nếu đã có lệnh đang mở thì không vào thêm
+   if(PositionSelect(_Symbol))
+      return false;
+
+   double sl = 0.0;
+   double tp = 0.0;
+
+   // Nến đóng cửa vượt xa phía trên vùng -> SELL thị trường
+   if(bar_close > zone_high + breakout_distance)
+   {
+      const double entry = tick.bid;
+      tp = zone_high; // TP về mép trên vùng
+      if(tp >= entry)
+      {
+         Print("TP tại vùng nằm trên giá sell, bỏ qua lệnh.");
+         last_signal_time = bar_time;
+         last_signal_side = 1;
+         return false;
+      }
+      if(InpStopLossPoints > 0)
+         sl = entry + InpStopLossPoints * _Point;
+
+      if(g_trade.Sell(InpLotSize, _Symbol, entry, sl, tp, "ZoneBreakoutSell"))
+      {
+         last_signal_time = bar_time;
+         last_signal_side = 1;
+         return true;
+      }
+
+      last_signal_time = bar_time;
+      last_signal_side = 1;
+      return false;
+   }
+
+   // Nến đóng cửa vượt xa phía dưới vùng -> BUY thị trường
+   if(bar_close < zone_low - breakout_distance)
+   {
+      const double entry = tick.ask;
+      tp = zone_low; // TP về mép dưới vùng
+      if(tp <= entry)
+      {
+         Print("TP tại vùng nằm dưới giá buy, bỏ qua lệnh.");
+         last_signal_time = bar_time;
+         last_signal_side = -1;
+         return false;
+      }
+      if(InpStopLossPoints > 0)
+         sl = entry - InpStopLossPoints * _Point;
+
+      if(g_trade.Buy(InpLotSize, _Symbol, entry, sl, tp, "ZoneBreakoutBuy"))
+      {
+         last_signal_time = bar_time;
+         last_signal_side = -1;
+         return true;
+      }
+
+      last_signal_time = bar_time;
+      last_signal_side = -1;
+      return false;
    }
 
    return false;
@@ -138,6 +257,7 @@ void OnTick()
    // Kiểm tra điều kiện và vẽ 2 đoạn song song khi đủ điều kiện
    double zone_low = 0.0;
    double zone_high = 0.0;
+   double zone_price = 0.0;
    datetime left_time = 0;
    datetime right_time = 0;
    const bool touched = PreviousBarsTouchedZone(
@@ -147,18 +267,34 @@ void OnTick()
       InpConsecutiveBars,
       zone_low,
       zone_high,
+      zone_price,
       left_time,
       right_time
    );
 
    if(touched)
    {
+      g_zone_active = true;
+      g_zone_price = zone_price;
+      g_zone_low = zone_low;
+      g_zone_high = zone_high;
       DrawZoneSegment("TickZoneHigh", left_time, right_time, zone_high);
       DrawZoneSegment("TickZoneLow", left_time, right_time, zone_low);
-      Print("Da co tick truoc do cham cung vung gia.");
+      PrintFormat("Da co tick truoc do cham cung vung gia. Gia vung: %s",
+                  DoubleToString(g_zone_price, _Digits));
    }
    else
    {
+      // Giữ vùng cũ trên biểu đồ khi chưa có lệnh
+   }
+
+   // Kiểm tra breakout và đặt lệnh theo hướng thoát vùng
+   const bool order_placed = CheckBreakoutTrade(g_zone_active, g_zone_low, g_zone_high);
+   if(order_placed)
+   {
+      g_zone_active = false;
+      g_zone_low = 0.0;
+      g_zone_high = 0.0;
       ObjectDelete(0, "TickZoneHigh");
       ObjectDelete(0, "TickZoneLow");
    }

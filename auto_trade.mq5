@@ -13,11 +13,11 @@
 // Số nến trước đó cần kiểm tra (không tính nến hiện tại)
 input int  InpLookbackBars  = 50;    
 // Sai số chạm vùng giá (points) để xác định có chạm
-input int  InpZonePoints    = 2;    
+input int  InpZonePoints    = 3;    
 // Độ rộng vùng vẽ (points) cho 2 đường song song
-input int  InpDrawPoints    = 6;     
+input int  InpDrawPoints    = 3;     
 // Số nến LIỀN KỀ phải chạm vùng giá mới đủ điều kiện
-input int  InpConsecutiveBars = 9;  
+input int  InpConsecutiveBars = 10;  
 // Khoảng cách vượt xa vùng để kích hoạt lệnh (points)
 input int  InpBreakoutDistancePoints = 0;
 // Khối lượng vào lệnh
@@ -32,6 +32,8 @@ bool g_zone_active = false;
 double g_zone_price = 0.0;
 double g_zone_low = 0.0;
 double g_zone_high = 0.0;
+datetime g_zone_left_time = 0;
+datetime g_zone_right_time = 0;
 // Đối tượng trade để đặt lệnh
 CTrade g_trade;
 
@@ -254,6 +256,17 @@ void DrawZoneSegment(const string name,
 
 void OnTick()
 {
+   // Khi đang có lệnh mở thì không tìm tín hiệu mới, giữ nguyên vùng hiện tại
+   if(PositionSelect(_Symbol))
+   {
+      if(g_zone_active)
+      {
+         DrawZoneSegment("TickZoneHigh", g_zone_left_time, g_zone_right_time, g_zone_high);
+         DrawZoneSegment("TickZoneLow", g_zone_left_time, g_zone_right_time, g_zone_low);
+      }
+      return;
+   }
+
    // Kiểm tra điều kiện và vẽ 2 đoạn song song khi đủ điều kiện
    double zone_low = 0.0;
    double zone_high = 0.0;
@@ -278,6 +291,8 @@ void OnTick()
       g_zone_price = zone_price;
       g_zone_low = zone_low;
       g_zone_high = zone_high;
+      g_zone_left_time = left_time;
+      g_zone_right_time = right_time;
       DrawZoneSegment("TickZoneHigh", left_time, right_time, zone_high);
       DrawZoneSegment("TickZoneLow", left_time, right_time, zone_low);
       PrintFormat("Da co tick truoc do cham cung vung gia. Gia vung: %s",
@@ -286,17 +301,14 @@ void OnTick()
    else
    {
       // Giữ vùng cũ trên biểu đồ khi chưa có lệnh
+      if(g_zone_active)
+      {
+         DrawZoneSegment("TickZoneHigh", g_zone_left_time, g_zone_right_time, g_zone_high);
+         DrawZoneSegment("TickZoneLow", g_zone_left_time, g_zone_right_time, g_zone_low);
+      }
    }
 
    // Kiểm tra breakout và đặt lệnh theo hướng thoát vùng
-   const bool order_placed = CheckBreakoutTrade(g_zone_active, g_zone_low, g_zone_high);
-   if(order_placed)
-   {
-      g_zone_active = false;
-      g_zone_low = 0.0;
-      g_zone_high = 0.0;
-      ObjectDelete(0, "TickZoneHigh");
-      ObjectDelete(0, "TickZoneLow");
-   }
+   CheckBreakoutTrade(g_zone_active, g_zone_low, g_zone_high);
 }
 

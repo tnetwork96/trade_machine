@@ -13,11 +13,11 @@
 // Số nến trước đó cần kiểm tra (không tính nến hiện tại)
 input int  InpLookbackBars  = 50;    
 // Sai số chạm vùng giá (points) để xác định có chạm
-input int  InpZonePoints    = 3;    
+input int  InpZonePoints    = 2;    
 // Độ rộng vùng vẽ (points) cho 2 đường song song
-input int  InpDrawPoints    = 5;     
+input int  InpDrawPoints    = 6;     
 // Số nến LIỀN KỀ phải chạm vùng giá mới đủ điều kiện
-input int  InpConsecutiveBars = 7;  
+input int  InpConsecutiveBars = 9;  
 // Khoảng cách vượt xa vùng để kích hoạt lệnh (points)
 input int  InpBreakoutDistancePoints = 0;
 // Khối lượng vào lệnh

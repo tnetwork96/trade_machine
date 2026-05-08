@@ -13,18 +13,26 @@
 // Số nến trước đó cần kiểm tra (không tính nến hiện tại)
 input int  InpLookbackBars  = 50;    
 // Sai số chạm vùng giá (points) để xác định có chạm
-input int  InpZonePoints    = 3;    
+input int  InpZonePoints    = 8;    
 // Độ rộng vùng vẽ (points) cho 2 đường song song
-input int  InpDrawPoints    = 3;     
+input int  InpDrawPoints    = 8;     
 // Số nến LIỀN KỀ phải chạm vùng giá mới đủ điều kiện
 input int  InpConsecutiveBars = 10;  
 // Khoảng cách vượt xa vùng để kích hoạt lệnh (points)
 input int  InpBreakoutDistancePoints = 0;
+// Khoảng khấu trừ TP so với viền vùng (points)
+input int  InpTpOffsetPoints = 0;
 // Khối lượng vào lệnh
 input double InpLotSize = 0.01;
-// Stop Loss (points), 0 = không đặt
+// Stop Loss (points), 0 = không đặt. Ở chế độ flex thì là khoảng offset so với biên vùng.
 input int  InpStopLossPoints = 0;
-// Take Profit (points), 0 = không đặt
+// Chế độ SL: 0 = cố định theo điểm từ giá vào lệnh, 1 = flex theo biên vùng
+input int  InpStopLossMode = 1;
+// Điểm lời để dời SL về hòa (points), 0 = tắt
+input int  InpBreakEvenPoints = 1;
+// Đệm hòa vốn (points) để bù spread
+input int  InpBreakEvenBufferPoints = 1;
+// Take Profit (points), 1 = không đặt
 input int  InpTakeProfitPoints = 0;
 
 // Lưu giá vùng gần nhất khi đủ điều kiện
@@ -175,12 +183,13 @@ bool CheckBreakoutTrade(const bool zone_active,
 
    double sl = 0.0;
    double tp = 0.0;
+   const double tp_offset = MathMax(InpTpOffsetPoints, 0) * _Point;
 
    // Nến đóng cửa vượt xa phía trên vùng -> SELL thị trường
    if(bar_close > zone_high + breakout_distance)
    {
       const double entry = tick.bid;
-      tp = zone_high; // TP về mép trên vùng
+      tp = zone_high - tp_offset; // TP khấu trừ từ mép trên vùng
       if(tp >= entry)
       {
          Print("TP tại vùng nằm trên giá sell, bỏ qua lệnh.");
@@ -189,7 +198,12 @@ bool CheckBreakoutTrade(const bool zone_active,
          return false;
       }
       if(InpStopLossPoints > 0)
-         sl = entry + InpStopLossPoints * _Point;
+      {
+         if(InpStopLossMode == 1)
+            sl = zone_high + InpStopLossPoints * _Point;
+         else
+            sl = entry + InpStopLossPoints * _Point;
+      }
 
       if(g_trade.Sell(InpLotSize, _Symbol, entry, sl, tp, "ZoneBreakoutSell"))
       {
@@ -207,7 +221,7 @@ bool CheckBreakoutTrade(const bool zone_active,
    if(bar_close < zone_low - breakout_distance)
    {
       const double entry = tick.ask;
-      tp = zone_low; // TP về mép dưới vùng
+      tp = zone_low + tp_offset; // TP khấu trừ từ mép dưới vùng
       if(tp <= entry)
       {
          Print("TP tại vùng nằm dưới giá buy, bỏ qua lệnh.");
@@ -216,7 +230,12 @@ bool CheckBreakoutTrade(const bool zone_active,
          return false;
       }
       if(InpStopLossPoints > 0)
-         sl = entry - InpStopLossPoints * _Point;
+      {
+         if(InpStopLossMode == 1)
+            sl = zone_low - InpStopLossPoints * _Point;
+         else
+            sl = entry - InpStopLossPoints * _Point;
+      }
 
       if(g_trade.Buy(InpLotSize, _Symbol, entry, sl, tp, "ZoneBreakoutBuy"))
       {
@@ -231,6 +250,47 @@ bool CheckBreakoutTrade(const bool zone_active,
    }
 
    return false;
+}
+
+// Dời SL về hòa khi đạt số điểm lời nhất định
+bool ApplyBreakEven()
+{
+   if(InpBreakEvenPoints <= 0)
+      return false;
+   if(!PositionSelect(_Symbol))
+      return false;
+
+   const long type = PositionGetInteger(POSITION_TYPE);
+   const double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+   const double current_sl = PositionGetDouble(POSITION_SL);
+   const double current_tp = PositionGetDouble(POSITION_TP);
+
+   const double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   const double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   const double profit_points = (type == POSITION_TYPE_BUY)
+      ? (bid - open_price) / _Point
+      : (open_price - ask) / _Point;
+
+   if(profit_points < InpBreakEvenPoints)
+      return false;
+
+   const double buffer = MathMax(InpBreakEvenBufferPoints, 0) * _Point;
+   const double new_sl = (type == POSITION_TYPE_BUY)
+      ? open_price + buffer
+      : open_price - buffer;
+
+   if(type == POSITION_TYPE_BUY)
+   {
+      if(current_sl >= new_sl && current_sl > 0.0)
+         return false;
+   }
+   else
+   {
+      if(current_sl <= new_sl && current_sl > 0.0)
+         return false;
+   }
+
+   return g_trade.PositionModify(_Symbol, new_sl, current_tp);
 }
 
 // Vẽ đoạn ngang trong khoảng thời gian đủ điều kiện (không kéo dài về trái/phải).
@@ -264,6 +324,7 @@ void OnTick()
          DrawZoneSegment("TickZoneHigh", g_zone_left_time, g_zone_right_time, g_zone_high);
          DrawZoneSegment("TickZoneLow", g_zone_left_time, g_zone_right_time, g_zone_low);
       }
+      ApplyBreakEven();
       return;
    }
 
